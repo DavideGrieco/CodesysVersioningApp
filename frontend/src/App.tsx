@@ -35,17 +35,12 @@ export default function App() {
   const [notes, setNotes] = useState("");
   const [createdBy, setCreatedBy] = useState("");
 
-  // Form: upload nuovo file per versione
+  // Upload unico (aggiunge o sostituisce se lo stesso "kind" esiste)
   const [kind, setKind] = useState<"project" | "projectarchive" | "xml">("xml");
   const [file, setFile] = useState<File | null>(null);
 
-  // Form: sostituzione file per versione
-  const [replaceKind, setReplaceKind] = useState<"project" | "projectarchive" | "xml">("xml");
-  const [replaceFile, setReplaceFile] = useState<File | null>(null);
-
   const [loading, setLoading] = useState(false);
 
-  // Helpers
   const fmtBytes = (n: number) => {
     if (!n && n !== 0) return "-";
     const k = 1024;
@@ -59,11 +54,8 @@ export default function App() {
     return kinds.size; // quanti dei 3 tipi sono presenti
   }, [files]);
 
-  // ====== Effects ======
   useEffect(() => {
-    api.listProjects()
-      .then(setProjects)
-      .catch((e) => console.error(e));
+    api.listProjects().then(setProjects).catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -76,13 +68,9 @@ export default function App() {
     api.listVersions(selectedProject.id)
       .then((v) => {
         setVersions(v);
-        // se non c'è ancora una versione selezionata, seleziona l'ultima
-        if (v.length && !selectedVersion) {
-          setSelectedVersion(v[0]);
-        }
+        if (v.length) setSelectedVersion(v[0]);
       })
-      .catch((e) => console.error(e));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch(console.error);
   }, [selectedProject?.id]);
 
   useEffect(() => {
@@ -90,12 +78,10 @@ export default function App() {
       setFiles([]);
       return;
     }
-    api.listVersionArtifacts(selectedVersion.id)
-      .then(setFiles)
-      .catch((e) => console.error(e));
+    api.listVersionArtifacts(selectedVersion.id).then(setFiles).catch(console.error);
   }, [selectedVersion]);
 
-  // ====== Actions ======
+  // === Actions ===
   async function createProject() {
     if (!pname.trim() || !pcode.trim()) return;
     setLoading(true);
@@ -105,6 +91,22 @@ export default function App() {
       setPname(""); setPcode(""); setPowner("");
     } catch (e: any) {
       alert("Errore creazione progetto: " + (e?.message ?? e));
+    } finally { setLoading(false); }
+  }
+
+  async function deleteProject() {
+    if (!selectedProject) return;
+    if (!confirm(`Eliminare il progetto "${selectedProject.name}" con TUTTE le versioni e i file?`)) return;
+    setLoading(true);
+    try {
+      await api.deleteProject(selectedProject.id);
+      setProjects(prev => prev.filter(p => p.id !== selectedProject.id));
+      setSelectedProject(null);
+      setVersions([]);
+      setSelectedVersion(null);
+      setFiles([]);
+    } catch (e: any) {
+      alert("Errore eliminazione progetto: " + (e?.message ?? e));
     } finally { setLoading(false); }
   }
 
@@ -118,10 +120,30 @@ export default function App() {
         created_by: createdBy.trim() || undefined
       });
       setVersions(prev => [v, ...prev]);
-      setSelectedVersion(v); // focus sulla nuova
+      setSelectedVersion(v);
       setVer(""); setNotes("");
     } catch (e: any) {
       alert("Errore creazione versione: " + (e?.message ?? e));
+    } finally { setLoading(false); }
+  }
+
+  async function deleteVersion() {
+    if (!selectedProject || !selectedVersion) return;
+    if (!confirm(`Eliminare la versione "${selectedVersion.codesys_version ?? "n/d"}" con i file associati?`)) return;
+    setLoading(true);
+    try {
+      await api.deleteVersion(selectedProject.id, selectedVersion.id);
+      const vlist = await api.listVersions(selectedProject.id);
+      setVersions(vlist);
+      setSelectedVersion(vlist[0] ?? null);
+      if (vlist[0]) {
+        const data = await api.listVersionArtifacts(vlist[0].id);
+        setFiles(data);
+      } else {
+        setFiles([]);
+      }
+    } catch (e: any) {
+      alert("Errore eliminazione versione: " + (e?.message ?? e));
     } finally { setLoading(false); }
   }
 
@@ -133,46 +155,40 @@ export default function App() {
       fd.append("kind", kind);
       fd.append("uploaded_by", createdBy.trim() || "user");
       fd.append("f", file);
-      await api.uploadVersionArtifact(selectedVersion.id, fd);
+      const res = await api.uploadVersionArtifact(selectedVersion.id, fd);
+      const wasReplace = !!res?.replaced;
       setFile(null);
       const data = await api.listVersionArtifacts(selectedVersion.id);
       setFiles(data);
+      alert(wasReplace ? "File sostituito." : "File aggiunto.");
     } catch (e: any) {
       alert("Errore upload: " + (e?.message ?? e));
     } finally { setLoading(false); }
   }
 
-  async function replaceArtifact() {
-    if (!selectedVersion || !replaceFile) return;
-    setLoading(true);
-    try {
-      const fd = new FormData();
-      fd.append("kind", replaceKind);
-      fd.append("uploaded_by", createdBy.trim() || "user");
-      fd.append("f", replaceFile);
-      await api.uploadVersionArtifact(selectedVersion.id, fd); // stessa rotta: fa replace se esiste
-      setReplaceFile(null);
-      const data = await api.listVersionArtifacts(selectedVersion.id);
-      setFiles(data);
-    } catch (e: any) {
-      alert("Errore sostituzione: " + (e?.message ?? e));
-    } finally { setLoading(false); }
-  }
-
   async function deleteArtifact(aid: number) {
     if (!selectedVersion) return;
-    if (!confirm("Sei sicuro di eliminare questo file dalla versione?")) return;
+    if (!confirm("Eliminare questo file dalla versione?")) return;
     setLoading(true);
     try {
       await api.deleteVersionArtifact(selectedVersion.id, aid);
       const data = await api.listVersionArtifacts(selectedVersion.id);
       setFiles(data);
     } catch (e: any) {
-      alert("Errore eliminazione: " + (e?.message ?? e));
+      alert("Errore eliminazione file: " + (e?.message ?? e));
     } finally { setLoading(false); }
   }
 
-  // ====== Render ======
+  // accept filter per il file picker
+  const accept = useMemo(() => {
+    switch (kind) {
+      case "project": return ".project";
+      case "projectarchive": return ".projectarchive";
+      case "xml": return ".xml";
+      default: return "";
+    }
+  }, [kind]);
+
   return (
     <div className="app">
       <h1>Codesys Versioning</h1>
@@ -182,44 +198,19 @@ export default function App() {
         <div className="card">
           <h2>Progetti</h2>
           <div className="row mt8">
-            <input
-              className="input"
-              placeholder="Nome"
-              value={pname}
-              onChange={(e) => setPname(e.target.value)}
-            />
-            <input
-              className="input"
-              placeholder="Codice"
-              value={pcode}
-              onChange={(e) => setPcode(e.target.value)}
-            />
+            <input className="input" placeholder="Nome" value={pname} onChange={e=>setPname(e.target.value)} />
+            <input className="input" placeholder="Codice" value={pcode} onChange={e=>setPcode(e.target.value)} />
           </div>
           <div className="row mt8">
-            <input
-              className="input"
-              placeholder="Owner (opz.)"
-              value={powner}
-              onChange={(e) => setPowner(e.target.value)}
-            />
-            <button className="button" disabled={loading} onClick={createProject}>
-              Crea
-            </button>
+            <input className="input" placeholder="Owner (opz.)" value={powner} onChange={e=>setPowner(e.target.value)} />
+            <button className="button" disabled={loading} onClick={createProject}>Crea</button>
+            <button className="button" disabled={loading || !selectedProject} onClick={deleteProject}>Elimina progetto</button>
           </div>
 
           <ul className="list mt16">
-            {projects.map((p) => (
-              <li
-                key={p.id}
-                onClick={() => {
-                  setSelectedProject(p);
-                  setSelectedVersion(null);
-                }}
-              >
-                <div>
-                  <strong>{p.name}</strong>{" "}
-                  <span className="label">({p.code})</span>
-                </div>
+            {projects.map(p => (
+              <li key={p.id} onClick={() => { setSelectedProject(p); setSelectedVersion(null); }}>
+                <div><strong>{p.name}</strong> <span className="label">({p.code})</span></div>
                 <div className="label">Owner: {p.owner ?? "-"}</div>
               </li>
             ))}
@@ -229,10 +220,7 @@ export default function App() {
         {/* Colonna Versioni + File */}
         <div className="card">
           <h2>
-            Versioni{" "}
-            {selectedProject ? (
-              <span className="badge">{selectedProject.name}</span>
-            ) : null}
+            Versioni {selectedProject ? <span className="badge">{selectedProject.name}</span> : null}
           </h2>
           {!selectedProject && <div className="label">Seleziona un progetto</div>}
 
@@ -240,56 +228,27 @@ export default function App() {
             <>
               {/* Creazione nuova versione */}
               <div className="row mt8">
-                <input
-                  className="input"
-                  placeholder="CODESYS version es. 3.5.1"
-                  value={ver}
-                  onChange={(e) => setVer(e.target.value)}
-                />
-                <input
-                  className="input"
-                  placeholder="Autore"
-                  value={createdBy}
-                  onChange={(e) => setCreatedBy(e.target.value)}
-                />
+                <input className="input" placeholder="CODESYS version es. 3.5.1" value={ver} onChange={e=>setVer(e.target.value)} />
+                <input className="input" placeholder="Autore" value={createdBy} onChange={e=>setCreatedBy(e.target.value)} />
               </div>
-              <textarea
-                className="input mt8"
-                placeholder="Note"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
+              <textarea className="input mt8" placeholder="Note" value={notes} onChange={e=>setNotes(e.target.value)} />
               <div className="row mt8">
-                <button className="button" disabled={loading} onClick={createVersion}>
-                  Aggiungi versione
-                </button>
+                <button className="button" disabled={loading} onClick={createVersion}>Aggiungi versione</button>
+                <button className="button" disabled={loading || !selectedVersion} onClick={deleteVersion}>Elimina versione</button>
               </div>
 
               {/* Elenco versioni */}
               <ul className="list mt16">
-                {versions.map((v) => (
-                  <li
-                    key={v.id}
-                    onClick={() => setSelectedVersion(v)}
-                    style={{
-                      border:
-                        selectedVersion?.id === v.id ? "1px solid #0d6efd" : "1px solid #eee",
-                      padding: 12,
-                    }}
-                  >
+                {versions.map(v => (
+                  <li key={v.id} onClick={() => setSelectedVersion(v)} style={{ border: selectedVersion?.id === v.id ? "1px solid #0d6efd" : "1px solid #eee", padding: 12 }}>
                     <div className="row" style={{ justifyContent: "space-between" }}>
                       <div>
-                        <strong>{v.codesys_version ?? "n/d"}</strong>{" "}
-                        <span className="label">[{v.status}]</span>
-                        <div className="label">
-                          Creata: {new Date(v.created_at).toLocaleString()}
-                        </div>
+                        <strong>{v.codesys_version ?? "n/d"}</strong> <span className="label">[{v.status}]</span>
+                        <div className="label">Creata: {new Date(v.created_at).toLocaleString()}</div>
                         {v.notes && <div className="label">Note: {v.notes}</div>}
                       </div>
                       {selectedVersion?.id === v.id && (
-                        <div className="label">
-                          File allegati: <strong>{attachedCount}/3</strong>
-                        </div>
+                        <div className="label">File allegati: <strong>{attachedCount}/3</strong></div>
                       )}
                     </div>
 
@@ -298,81 +257,31 @@ export default function App() {
                       <div className="mt8">
                         <div className="label">File della versione</div>
                         <ul className="list">
-                          {files.length === 0 && (
-                            <li className="label">Nessun file caricato.</li>
-                          )}
-                          {files.map((f) => (
+                          {files.length === 0 && (<li className="label">Nessun file caricato.</li>)}
+                          {files.map(f => (
                             <li key={f.artifact_id} className="row" style={{ justifyContent: "space-between" }}>
                               <div>
                                 <strong>{labelForKind(f.kind)}</strong> — {f.filename}{" "}
-                                <span className="label">
-                                  ({fmtBytes(f.size_bytes)}) • SHA256: {f.content_hash.slice(0, 8)}…
-                                </span>
+                                <span className="label">({fmtBytes(f.size_bytes)}) • SHA256: {f.content_hash.slice(0,8)}…</span>
                               </div>
                               <div className="row">
-                                <a
-                                  className="button"
-                                  href={api.downloadVersionArtifactUrl(v.id, f.artifact_id)}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  Download
-                                </a>
-                                <button className="button" onClick={() => deleteArtifact(f.artifact_id)}>
-                                  Elimina
-                                </button>
+                                <a className="button" href={api.downloadVersionArtifactUrl(v.id, f.artifact_id)} target="_blank" rel="noreferrer">Download</a>
+                                <button className="button" onClick={() => deleteArtifact(f.artifact_id)}>Elimina</button>
                               </div>
                             </li>
                           ))}
                         </ul>
 
-                        {/* Upload NUOVO file per questa versione */}
+                        {/* Upload unico: aggiunge o sostituisce se quel tipo esiste */}
                         <div className="row mt16">
-                          <select
-                            className="select"
-                            value={kind}
-                            onChange={(e) => setKind(e.target.value as any)}
-                          >
+                          <select className="select" value={kind} onChange={e=>setKind(e.target.value as any)}>
                             <option value="project">.project</option>
                             <option value="projectarchive">.projectarchive</option>
                             <option value="xml">.xml</option>
                           </select>
-                          <input
-                            className="file"
-                            type="file"
-                            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                          />
-                          <button
-                            className="button"
-                            disabled={loading || !file}
-                            onClick={uploadForSelectedVersion}
-                          >
-                            Upload file
-                          </button>
-                        </div>
-
-                        {/* Sostituzione file esistente (scegli tipo e file) */}
-                        <div className="row mt8">
-                          <select
-                            className="select"
-                            value={replaceKind}
-                            onChange={(e) => setReplaceKind(e.target.value as any)}
-                          >
-                            <option value="project">Sostituisci .project</option>
-                            <option value="projectarchive">Sostituisci .projectarchive</option>
-                            <option value="xml">Sostituisci .xml</option>
-                          </select>
-                          <input
-                            className="file"
-                            type="file"
-                            onChange={(e) => setReplaceFile(e.target.files?.[0] ?? null)}
-                          />
-                          <button
-                            className="button"
-                            disabled={loading || !replaceFile}
-                            onClick={replaceArtifact}
-                          >
-                            Sostituisci
+                          <input className="file" type="file" accept={accept} onChange={e=>setFile(e.target.files?.[0] ?? null)} />
+                          <button className="button" disabled={loading || !file} onClick={uploadForSelectedVersion}>
+                            Carica / Sostituisci
                           </button>
                         </div>
                       </div>
@@ -390,13 +299,9 @@ export default function App() {
 
 function labelForKind(k: "project" | "projectarchive" | "xml") {
   switch (k) {
-    case "project":
-      return ".project";
-    case "projectarchive":
-      return ".projectarchive";
-    case "xml":
-      return ".xml";
-    default:
-      return k;
+    case "project": return ".project";
+    case "projectarchive": return ".projectarchive";
+    case "xml": return ".xml";
+    default: return k;
   }
 }

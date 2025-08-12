@@ -117,13 +117,21 @@ def delete_artifact(version_id: int, artifact_id: int, db: Session = Depends(get
     if not link:
         raise HTTPException(404, "Artifact not linked to this version")
     art = db.get(Artifact, artifact_id)
+    path = art.storage_uri if art else None
+    ch = art.content_hash if art else None
+
     db.delete(link)
-    db.delete(art)
+    if art:
+        db.delete(art)
+    db.flush()
+
+    # Cancella file fisico SOLO se nessun altro artifact punta allo stesso contenuto
+    if ch:
+        others = db.query(Artifact).filter(Artifact.content_hash == ch).count()
+        if others == 0 and path and os.path.exists(path):
+            try: os.remove(path)
+            except Exception:
+                pass
+
     db.commit()
-    # opzionale: rimuovere anche il file fisico (ATTENZIONE: se fai deduplica per hash, il file potrebbe essere condiviso)
-    try:
-        if art and os.path.exists(art.storage_uri):
-            os.remove(art.storage_uri)
-    except Exception:
-        pass
     return {"deleted": True}

@@ -6,30 +6,63 @@ async function http<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 export const api = {
+  // Progetti
   listProjects: () => http<Project[]>("/projects"),
-  
-  createProject: (body: {name: string; code: string; owner?: string}) =>
-    http<Project>("/projects", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body)}),
-  
-  listVersions: (pid: number) => http<Version[]>(`/projects/${pid}/versions`),
-  
-  createVersion: (pid: number, body: {codesys_version?: string; notes?: string; created_by?: string}) =>
-    http<Version>(`/projects/${pid}/versions`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)}),
-  
-  uploadArtifact: (pid: number, form: FormData) =>
-    http<{artifact_id:number;content_hash:string;stored:string}>(`/projects/${pid}/artifacts`, { method:"POST", body: form }),
-  
-  listVersionArtifacts: (vid: number) =>
-    http<Array<{artifact_id:number; kind:"project"|"projectarchive"|"xml"; filename:string; size_bytes:number; uploaded_by?:string; uploaded_at:string; content_hash:string;}>>(`/versions/${vid}/artifacts`),
+  createProject: (body: { name: string; code: string; owner?: string }) =>
+    http<Project>("/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  deleteProject: (projectId: number) =>
+    http<{ deleted: true }>(`/projects/${projectId}`, { method: "DELETE" }),
 
-  uploadVersionArtifact: (vid: number, form: FormData) =>
-    http<{artifact_id:number; replaced:boolean}>(`/versions/${vid}/artifacts`, { method:"POST", body: form }),
+  // Versioni
+  listVersions: (projectId: number) =>
+    http<Version[]>(`/projects/${projectId}/versions`),
+  createVersion: (
+    projectId: number,
+    body: { codesys_version?: string; notes?: string; created_by?: string }
+  ) =>
+    http<Version>(`/projects/${projectId}/versions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  deleteVersion: (projectId: number, versionId: number) =>
+    http<{ deleted: true }>(
+      `/projects/${projectId}/versions/${versionId}`,
+      { method: "DELETE" }
+    ),
 
-  deleteVersionArtifact: (vid: number, aid: number) =>
-    http<{deleted:true}>(`/versions/${vid}/artifacts/${aid}`, { method:"DELETE" }),
+  // Artifacts per VERSIONE
+  listVersionArtifacts: (versionId: number) =>
+    http<
+      Array<{
+        artifact_id: number;
+        kind: "project" | "projectarchive" | "xml";
+        filename: string;
+        size_bytes: number;
+        uploaded_by?: string;
+        uploaded_at: string;
+        content_hash: string;
+      }>
+    >(`/versions/${versionId}/artifacts`),
 
-  downloadVersionArtifactUrl: (vid: number, aid: number) =>
-    `${API_BASE}/versions/${vid}/artifacts/${aid}/download`,
+  uploadVersionArtifact: (versionId: number, form: FormData) =>
+    http<{ artifact_id: number; replaced: boolean }>(
+      `/versions/${versionId}/artifacts`,
+      { method: "POST", body: form }
+    ),
+
+  deleteVersionArtifact: (versionId: number, artifactId: number) =>
+    http<{ deleted: true }>(
+      `/versions/${versionId}/artifacts/${artifactId}`,
+      { method: "DELETE" }
+    ),
+
+  downloadVersionArtifactUrl: (versionId: number, artifactId: number) =>
+    `${API_BASE}/versions/${versionId}/artifacts/${artifactId}/download`,
 };
 
 export type Project = { id:number; name:string; code:string; owner?:string|null; created_at:string };

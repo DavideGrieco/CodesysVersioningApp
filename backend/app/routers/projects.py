@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..db import get_db
 from .. import models, schemas
+import os
+
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -16,3 +18,34 @@ def create_project(body: schemas.ProjectCreate, db: Session = Depends(get_db)):
 @router.get("", response_model=list[schemas.ProjectOut])
 def list_projects(db: Session = Depends(get_db)):
     return db.query(models.Project).order_by(models.Project.created_at.desc()).all()
+
+@router.delete("/{project_id}")
+def delete_project(project_id: int, db: Session = Depends(get_db)):
+    p = db.get(models.Project, project_id)
+    if not p:
+        raise HTTPException(404, "Project not found")
+
+    # Elimina versioni e relativi artifact
+    versions = db.query(models.Version).filter_by(project_id=project_id).all()
+    for v in versions:
+        # copia del helper per evitare import incrociati
+        links = db.query(models.VersionArtifact).filter_by(version_id=v.id).all()
+        artifact_ids = [ln.artifact_id for ln in links]
+        for ln in links: db.delete(ln)
+        db.flush()
+        for aid in artifact_ids:
+            art = db.get(models.Artifact, aid)
+            if not art: continue
+            path, ch = art.storage_uri, art.content_hash
+            db.delete(art)
+            db.flush()
+            others = db.query(models.Artifact).filter(models.Artifact.content_hash == ch).count()
+            if others == 0 and path and os.path.exists(path):
+                try: os.remove(path)
+                except Exception:
+                    pass
+        db.delete(v)
+
+    db.delete(p)
+    db.commit()
+    return {"deleted": True}
