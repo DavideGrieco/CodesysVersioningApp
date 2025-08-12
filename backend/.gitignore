@@ -1,0 +1,38 @@
+# Bytecode e cache Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# File di configurazione locali
+.env
+*.env
+
+# Database SQLite
+data.db
+
+# Cartella di storage (file caricati)
+app/storage/
+
+# Log e file temporanei
+*.log
+*.tmp
+*.temp
+
+# Output/artefatti di build
+dist/
+build/
+
+# Cache di editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Backup vari
+*~
