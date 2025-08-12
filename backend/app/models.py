@@ -1,4 +1,4 @@
-from sqlalchemy import String, Integer, ForeignKey, DateTime, Enum
+from sqlalchemy import String, Integer, ForeignKey, DateTime, Enum, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 from .db import Base
@@ -33,6 +33,9 @@ class Version(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     project: Mapped[Project] = relationship(back_populates="versions")
+    version_artifacts: Mapped[list["VersionArtifact"]] = relationship(
+        back_populates="version", cascade="all, delete-orphan"
+    )
 
 class Artifact(Base):
     __tablename__ = "artifacts"
@@ -45,3 +48,15 @@ class Artifact(Base):
     size_bytes: Mapped[int | None] = mapped_column(Integer)
     uploaded_by: Mapped[str | None] = mapped_column(String(100))
     uploaded_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+class VersionArtifact(Base):
+    __tablename__ = "version_artifacts"
+    version_id: Mapped[int] = mapped_column(ForeignKey("versions.id"), primary_key=True)
+    artifact_id: Mapped[int] = mapped_column(ForeignKey("artifacts.id"), primary_key=True)
+
+    version: Mapped[Version] = relationship(back_populates="version_artifacts")
+    artifact: Mapped[Artifact] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("version_id", "artifact_id", name="uq_version_artifact"),
+    )
