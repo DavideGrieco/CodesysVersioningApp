@@ -49,3 +49,24 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
     db.delete(p)
     db.commit()
     return {"deleted": True}
+
+@router.put("/{project_id}", response_model=schemas.ProjectOut)
+def update_project(project_id: int, body: schemas.ProjectUpdate, db: Session = Depends(get_db)):
+    p = db.get(models.Project, project_id)
+    if not p:
+        raise HTTPException(404, "Project not found")
+
+    # unicità name/code se modificati
+    if body.name and body.name != p.name:
+        if db.query(models.Project).filter(models.Project.name == body.name).first():
+            raise HTTPException(400, "Project name already exists")
+        p.name = body.name
+    if body.code and body.code != p.code:
+        if db.query(models.Project).filter(models.Project.code == body.code).first():
+            raise HTTPException(400, "Project code already exists")
+        p.code = body.code
+    if body.owner is not None:
+        p.owner = body.owner
+
+    db.commit(); db.refresh(p)
+    return p

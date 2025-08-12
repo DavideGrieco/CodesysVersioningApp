@@ -63,6 +63,14 @@ export const api = {
 
   downloadVersionArtifactUrl: (versionId: number, artifactId: number) =>
     `${API_BASE}/versions/${versionId}/artifacts/${artifactId}/download`,
+
+  updateProject: (projectId: number, body: { name?: string; code?: string; owner?: string | null }) =>
+  http<Project>(`/projects/${projectId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }),
+
 };
 
 export type Project = { id:number; name:string; code:string; owner?:string|null; created_at:string };

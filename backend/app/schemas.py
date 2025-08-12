@@ -16,6 +16,12 @@ class ProjectOut(BaseModel):
     id: int; name: str; code: str; owner: str | None; created_at: datetime
     class Config: from_attributes = True
 
+class ProjectUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+    owner: str | None = None
+
+
 class VersionCreate(BaseModel):
     codesys_version: str | None = None
     notes: str | None = None
